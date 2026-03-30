@@ -1,0 +1,304 @@
+{
+  "info": {
+    "_postman_id": "sunat-integration-collection",
+    "name": "SUNAT Integration - Sistema Agua",
+    "description": "Colección de endpoints para integración SUNAT Perú",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre_usuario\": \"vendedor\",\n  \"password\": \"password123\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:3000/api/auth/login",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3000",
+              "path": ["api", "auth", "login"]
+            },
+            "description": "Obtener JWT token para requests autenticados"
+          }
+        }
+      ]
+    },
+    {
+      "name": "SUNAT - Comprobantes",
+      "item": [
+        {
+          "name": "Generar Comprobante",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:3000/api/sunat/generar-comprobante/10",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3000",
+              "path": ["api", "sunat", "generar-comprobante", "10"]
+            },
+            "description": "Generar BOLETA o FACTURA según tipo de cliente (DNI/RUC)"
+          }
+        },
+        {
+          "name": "Enviar a SUNAT",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usuario\": \"tu_usuario_sunat\",\n  \"password\": \"tu_password_sunat\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:3000/api/sunat/enviar/1",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3000",
+              "path": ["api", "sunat", "enviar", "1"]
+            },
+            "description": "Enviar comprobante a SUNAT"
+          }
+        },
+        {
+          "name": "Obtener Comprobante",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:3000/api/sunat/1",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3000",
+              "path": ["api", "sunat", "1"]
+            },
+            "description": "Obtener estado de un comprobante"
+          }
+        },
+        {
+          "name": "Listar Comprobantes",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:3000/api/sunat/?estado=ACEPTADO&tipo=BOLETA&limite=50",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3000",
+              "path": ["api", "sunat", ""],
+              "query": [
+                {
+                  "key": "estado",
+                  "value": "ACEPTADO"
+                },
+                {
+                  "key": "tipo",
+                  "value": "BOLETA"
+                },
+                {
+                  "key": "limite",
+                  "value": "50"
+                }
+              ]
+            },
+            "description": "Listar comprobantes con filtros opcionales"
+          }
+        },
+        {
+          "name": "Descargar XML",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:3000/api/sunat/1/descargar",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3000",
+              "path": ["api", "sunat", "1", "descargar"]
+            },
+            "description": "Descargar archivo XML del comprobante"
+          }
+        },
+        {
+          "name": "Reintentar Envío",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usuario\": \"tu_usuario_sunat\",\n  \"password\": \"tu_password_sunat\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:3000/api/sunat/1/reintentar",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3000",
+              "path": ["api", "sunat", "1", "reintentar"]
+            },
+            "description": "Reintentar envío de comprobante (máx 5 intentos)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "SUNAT - Configuración",
+      "item": [
+        {
+          "name": "Obtener Configuración",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:3000/api/sunat/configuracion/datos",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3000",
+              "path": ["api", "sunat", "configuracion", "datos"]
+            },
+            "description": "Obtener datos de configuración (solo Admin)"
+          }
+        },
+        {
+          "name": "Actualizar Configuración",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ruc\": \"20123456789\",\n  \"nombreEmpresa\": \"Sistema Agua Perú SAC\",\n  \"direccion\": \"Lima, Perú\",\n  \"serieBoleta\": \"0001\",\n  \"serieFactura\": \"F001\",\n  \"usuarioSunat\": \"usuario_sunat\",\n  \"usuarioSOL\": \"usuario_sol\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:3000/api/sunat/configuracion/actualizar",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3000",
+              "path": ["api", "sunat", "configuracion", "actualizar"]
+            },
+            "description": "Actualizar configuración de SUNAT (solo Admin)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "VENTAS - Crear Venta",
+      "item": [
+        {
+          "name": "Crear Venta",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_cliente\": 1,\n  \"id_metodo_pago\": 1,\n  \"detalles\": [\n    {\n      \"id_producto\": 5,\n      \"cantidad\": 2,\n      \"precio\": 50.00\n    },\n    {\n      \"id_producto\": 6,\n      \"cantidad\": 1,\n      \"precio\": 30.00\n    }\n  ],\n  \"notas\": \"Venta de prueba para SUNAT\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:3000/api/ventas",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3000",
+              "path": ["api", "ventas"]
+            },
+            "description": "Crear una nueva venta (necesaria antes de generar comprobante)"
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "token",
+      "value": "your-jwt-token-here",
+      "type": "string",
+      "description": "JWT token obtenido del login"
+    }
+  ]
+}
