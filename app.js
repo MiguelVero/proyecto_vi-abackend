@@ -117,7 +117,7 @@ app.get('/debug-uploads', (req, res) => {
           created: stats.birthtime,
           modified: stats.mtime,
           url: `/uploads/logos/${file}`,
-          fullUrl: `https://backendvina-production.up.railway.app/uploads/logos/${file}`
+          fullUrl: `https://proyectovi-abackend-production.up.railway.app/uploads/logos/${file}`
         };
       });
     }
