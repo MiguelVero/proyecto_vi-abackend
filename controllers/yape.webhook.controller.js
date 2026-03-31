@@ -135,21 +135,21 @@ export const webhookYape = async (req, res) => {
       }
     }
     
-    if (!codigoVerificacion) {
-      console.log('⚠️ No se encontró código de verificación en el mensaje');
-      // Guardar transacción como no asociada
-      await db.execute(`
-        INSERT INTO transacciones_yape 
-        (transaction_id, monto, telefono_pagador, mensaje, estado, fecha_transaccion, push_id)
-        VALUES (?, ?, ?, ?, 'NO_ASOCIADA', ?, ?)
-      `, [finalTransactionId, amount, phone, message, yapeTimestamp || new Date(), push_iden]);
-      
-      return res.json({ 
-        received: true, 
-        message: 'Transacción recibida pero sin código',
-        status: 'no_code'
-      });
-    }
+if (!codigoVerificacion) {
+  console.log('⚠️ No se encontró código de verificación en el mensaje');
+  // ✅ CORREGIDO: Usar NOW() en lugar de JavaScript Date
+  await db.execute(`
+    INSERT INTO transacciones_yape 
+    (transaction_id, monto, telefono_pagador, mensaje, estado, fecha_transaccion, push_id)
+    VALUES (?, ?, ?, ?, 'NO_ASOCIADA', NOW(), ?)
+  `, [finalTransactionId, amount, phone, message, push_iden]);
+  
+  return res.json({ 
+    received: true, 
+    message: 'Transacción recibida pero sin código',
+    status: 'no_code'
+  });
+}
     
     console.log(`🔐 Código encontrado: ${codigoVerificacion}`);
     
@@ -172,18 +172,19 @@ export const webhookYape = async (req, res) => {
     ]);
     
     if (ventas.length === 0) {
-      console.log('❌ Código no válido o ya utilizado');
-      await db.execute(`
-        INSERT INTO transacciones_yape 
-        (transaction_id, monto, telefono_pagador, codigo_verificacion, mensaje, estado, fecha_transaccion, push_id)
-        VALUES (?, ?, ?, ?, ?, 'CODIGO_INVALIDO', ?, ?)
-      `, [finalTransactionId, amount, phone, codigoVerificacion, message, yapeTimestamp || new Date(), push_iden]);
-      
-      return res.status(404).json({ 
-        error: 'Código no válido o ya utilizado',
-        code: 'INVALID_CODE'
-      });
-    }
+  console.log('❌ Código no válido o ya utilizado');
+  // ✅ CORREGIDO: Usar NOW()
+  await db.execute(`
+    INSERT INTO transacciones_yape 
+    (transaction_id, monto, telefono_pagador, codigo_verificacion, mensaje, estado, fecha_transaccion, push_id)
+    VALUES (?, ?, ?, ?, ?, 'CODIGO_INVALIDO', NOW(), ?)
+  `, [finalTransactionId, amount, phone, codigoVerificacion, message, push_iden]);
+  
+  return res.status(404).json({ 
+    error: 'Código no válido o ya utilizado',
+    code: 'INVALID_CODE'
+  });
+}
     
     const venta = ventas[0];
     
@@ -191,18 +192,19 @@ export const webhookYape = async (req, res) => {
     // 6. VALIDAR MONTO
     // ============================================
     if (Number(venta.total) !== Number(amount)) {
-      console.log(`❌ Monto incorrecto: esperado S/ ${venta.total}, recibido S/ ${amount}`);
-      await db.execute(`
-        INSERT INTO transacciones_yape 
-        (transaction_id, monto, telefono_pagador, codigo_verificacion, mensaje, estado, fecha_transaccion, id_venta, push_id)
-        VALUES (?, ?, ?, ?, ?, 'MONTO_INCORRECTO', ?, ?, ?)
-      `, [finalTransactionId, amount, phone, codigoVerificacion, message, yapeTimestamp || new Date(), venta.id_venta, push_iden]);
-      
-      return res.status(400).json({ 
-        error: `Monto incorrecto. Esperado: S/ ${venta.total}`,
-        code: 'AMOUNT_MISMATCH'
-      });
-    }
+  console.log(`❌ Monto incorrecto: esperado S/ ${venta.total}, recibido S/ ${amount}`);
+  // ✅ CORREGIDO: Usar NOW()
+  await db.execute(`
+    INSERT INTO transacciones_yape 
+    (transaction_id, monto, telefono_pagador, codigo_verificacion, mensaje, estado, fecha_transaccion, id_venta, push_id)
+    VALUES (?, ?, ?, ?, ?, 'MONTO_INCORRECTO', NOW(), ?, ?)
+  `, [finalTransactionId, amount, phone, codigoVerificacion, message, venta.id_venta, push_iden]);
+  
+  return res.status(400).json({ 
+    error: `Monto incorrecto. Esperado: S/ ${venta.total}`,
+    code: 'AMOUNT_MISMATCH'
+  });
+}
     
     // ============================================
     // 7. VERIFICAR QUE NO SE HAYA PROCESADO ANTES
@@ -236,11 +238,12 @@ export const webhookYape = async (req, res) => {
     // ============================================
     // 9. REGISTRAR TRANSACCIÓN EXITOSA
     // ============================================
-    await db.execute(`
-      INSERT INTO transacciones_yape 
-      (transaction_id, monto, telefono_pagador, codigo_verificacion, mensaje, estado, fecha_transaccion, id_venta, push_id)
-      VALUES (?, ?, ?, ?, ?, 'CONFIRMADO', ?, ?, ?)
-    `, [finalTransactionId, amount, phone, codigoVerificacion, message, yapeTimestamp || new Date(), venta.id_venta, push_iden]);
+    // ✅ CORREGIDO: Usar NOW() en lugar de yapeTimestamp
+   await db.execute(`
+  INSERT INTO transacciones_yape 
+  (transaction_id, monto, telefono_pagador, codigo_verificacion, mensaje, estado, fecha_transaccion, id_venta, push_id)
+  VALUES (?, ?, ?, ?, ?, 'CONFIRMADO', NOW(), ?, ?)
+`, [finalTransactionId, amount, phone, codigoVerificacion, message, venta.id_venta, push_iden]);
     
     console.log(`✅ PAGO CONFIRMADO: Venta #${venta.id_venta}, Monto S/ ${amount}`);
     

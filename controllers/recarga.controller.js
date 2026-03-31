@@ -38,10 +38,15 @@ export const registrarRecarga = async (req, res) => {
 
     // Obtener fecha y hora Perú
     const ahora = new Date();
-    const offsetPeru = -5 * 60;
-    const fechaPeru = new Date(ahora.getTime() + offsetPeru * 60 * 1000);
-    const fechaStr = fechaPeru.toISOString().split('T')[0];
-    const horaStr = fechaPeru.toTimeString().split(' ')[0];
+   const fechaStr = ahora.toLocaleDateString('en-CA', { timeZone: 'America/Lima' }); // YYYY-MM-DD
+    const horaStr = ahora.toLocaleTimeString('en-US', { 
+  timeZone: 'America/Lima',
+  hour12: false,
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit'
+});
+console.log('📅 Fecha/Hora Perú:', { fechaStr, horaStr, original: ahora });
 
     // Crear recarga (venta con estado pagado y sin repartidor)
     const [result] = await connection.execute(`
@@ -74,30 +79,40 @@ export const registrarRecarga = async (req, res) => {
     await connection.commit();
 
     // Obtener datos del cliente para respuesta
-    const [clienteInfo] = await connection.execute(`
-      SELECT p.nombre_completo, p.telefono
-      FROM cliente c
-      JOIN persona p ON c.id_persona = p.id_persona
-      WHERE c.id_cliente = ?
-    `, [id_cliente]);
+// Obtener datos del cliente para respuesta
+const [clienteInfo] = await connection.execute(`
+  SELECT p.nombre_completo, p.telefono
+  FROM cliente c
+  JOIN persona p ON c.id_persona = p.id_persona
+  WHERE c.id_cliente = ?
+`, [id_cliente]);
 
-    res.status(201).json({
-      success: true,
-      message: 'Recarga registrada correctamente',
-      recarga: {
-        id_venta,
-        id_cliente,
-        id_producto,
-        cantidad,
-        total,
-        id_metodo_pago,
-        fecha: fechaStr,
-        hora: horaStr,
-        estado: 'PAGADO',
-        cliente: clienteInfo[0]?.nombre_completo,
-        telefono: clienteInfo[0]?.telefono
-      }
-    });
+// ✅ CORREGIDO: Asegurar que el nombre del cliente esté disponible
+const nombreCliente = clienteInfo[0]?.nombre_completo || 
+                      (await connection.execute(
+                        'SELECT nombre_completo FROM persona WHERE id_persona = (SELECT id_persona FROM cliente WHERE id_cliente = ?)',
+                        [id_cliente]
+                      ))[0]?.[0]?.nombre_completo || 
+                      'Cliente';
+
+res.status(201).json({
+  success: true,
+  message: 'Recarga registrada correctamente',
+  recarga: {
+    id_venta,
+    id_cliente,
+    id_producto,
+    cantidad,
+    total,
+    id_metodo_pago,
+    fecha: fechaStr,
+    hora: horaStr,
+    estado: 'PAGADO',
+    cliente: nombreCliente, // ← Ahora siempre tendrá un valor
+    telefono: clienteInfo[0]?.telefono || ''
+  },
+  mensaje: 'Recarga completada exitosamente'
+});
 
   } catch (error) {
     await connection.rollback();
