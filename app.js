@@ -7,6 +7,7 @@ import dotenv from "dotenv";
 import db from "./config/db.js";
 import indexRoutes from "./routes/index.js";
 import paths from './config/paths.js';
+import pushbulletService from './services/pushbullet.service.js'; // ← AGREGAR
 
 dotenv.config();
 
@@ -160,6 +161,26 @@ app.get("/", (req, res) => res.json({
 // Health check para Railway
 app.get("/health", (req, res) => res.status(200).json({ status: "OK" }));
 
+
+// ============================================
+// ENDPOINT PARA VERIFICAR ESTADO DE PUSHBULLET
+// ============================================
+app.get("/api/pushbullet/status", async (req, res) => {
+  try {
+    const status = pushbulletService.getStatus();
+    res.json({
+      success: true,
+      ...status
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+// ============================================
+// INICIAR SERVIDOR Y PUSHBULLET POLLING
+// ============================================
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, async () => {
   console.log(`🚀 Servidor corriendo en puerto ${PORT}`);
@@ -169,9 +190,43 @@ app.listen(PORT, async () => {
   try {
     const [rows] = await db.query("SELECT 1+1 AS result");
     console.log("✅ Conexión a DB OK");
+    
+    // ============================================
+    // INICIAR PUSHBULLET POLLING (SOLO EN PRODUCCIÓN)
+    // ============================================
+    const pushbulletToken = process.env.PUSHBULLET_ACCESS_TOKEN;
+    
+    if (pushbulletToken) {
+      console.log('🔧 Configurando Pushbullet Service...');
+      pushbulletService.init(pushbulletToken);
+      
+      // Iniciar polling después de 5 segundos (dar tiempo a que todo cargue)
+      setTimeout(() => {
+        pushbulletService.startPolling(10); // cada 10 segundos
+      }, 5000);
+    } else {
+      console.log('⚠️ PUSHBULLET_ACCESS_TOKEN no configurado. El servicio de detección automática no se iniciará.');
+      console.log('   Para activarlo, agrega la variable en Railway: PUSHBULLET_ACCESS_TOKEN');
+    }
+    
   } catch (err) {
     console.error("❌ Error conectando a la DB:", err.message);
   }
+});
+
+// ============================================
+// MANEJAR CIERRE GRACIOSO
+// ============================================
+process.on('SIGTERM', () => {
+  console.log('🛑 Recibida señal SIGTERM, cerrando servicios...');
+  pushbulletService.stopPolling();
+  process.exit(0);
+});
+
+process.on('SIGINT', () => {
+  console.log('🛑 Recibida señal SIGINT, cerrando servicios...');
+  pushbulletService.stopPolling();
+  process.exit(0);
 });
 
 export default app;
