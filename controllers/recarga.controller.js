@@ -38,23 +38,31 @@ export const registrarRecarga = async (req, res) => {
 
     // Obtener fecha y hora Perú
     const ahora = new Date();
-   const fechaStr = ahora.toLocaleDateString('en-CA', { timeZone: 'America/Lima' }); // YYYY-MM-DD
+    const fechaStr = ahora.toLocaleDateString('en-CA', { timeZone: 'America/Lima' });
     const horaStr = ahora.toLocaleTimeString('en-US', { 
-  timeZone: 'America/Lima',
-  hour12: false,
-  hour: '2-digit',
-  minute: '2-digit',
-  second: '2-digit'
-});
-console.log('📅 Fecha/Hora Perú:', { fechaStr, horaStr, original: ahora });
+      timeZone: 'America/Lima',
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
 
-    // Crear recarga (venta con estado pagado y sin repartidor)
+    console.log('📅 Recarga - Fecha/Hora Perú:', { fechaStr, horaStr, id_metodo_pago });
+
+    // ✅ DETERMINAR ESTADO INICIAL SEGÚN MÉTODO DE PAGO
+    // Yape: estado 4 (Listo para repartos, esperando confirmación)
+    // Efectivo: estado 7 (Pagado directamente)
+    const estadoInicial = id_metodo_pago === 2 ? 4 : 7;
+    
+    console.log(`💰 Método pago: ${id_metodo_pago === 2 ? 'YAPE' : 'EFECTIVO'} - Estado inicial: ${estadoInicial}`);
+
+    // Crear recarga
     const [result] = await connection.execute(`
       INSERT INTO venta (
         id_cliente, fecha, hora, total, id_metodo_pago, id_estado_venta,
         id_vendedor, notas, tipo_comprobante_solicitado
-      ) VALUES (?, ?, ?, ?, ?, 7, ?, ?, 'SIN_COMPROBANTE')
-    `, [id_cliente, fechaStr, horaStr, total, id_metodo_pago, id_usuario, notas || 'Recarga de bidones']);
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'SIN_COMPROBANTE')
+    `, [id_cliente, fechaStr, horaStr, total, id_metodo_pago, estadoInicial, id_usuario, notas || 'Recarga de bidones']);
 
     const id_venta = result.insertId;
 
@@ -69,7 +77,7 @@ console.log('📅 Fecha/Hora Perú:', { fechaStr, horaStr, original: ahora });
       UPDATE producto SET stock = stock - ? WHERE id_producto = ?
     `, [cantidad, id_producto]);
 
-    // ✅ CORREGIDO: Usar CONCAT en lugar de ||
+    // Registrar movimiento de stock
     await connection.execute(`
       INSERT INTO movimiento_stock 
       (id_producto, tipo_movimiento, cantidad, descripcion, id_usuario)
@@ -79,40 +87,38 @@ console.log('📅 Fecha/Hora Perú:', { fechaStr, horaStr, original: ahora });
     await connection.commit();
 
     // Obtener datos del cliente para respuesta
-// Obtener datos del cliente para respuesta
-const [clienteInfo] = await connection.execute(`
-  SELECT p.nombre_completo, p.telefono
-  FROM cliente c
-  JOIN persona p ON c.id_persona = p.id_persona
-  WHERE c.id_cliente = ?
-`, [id_cliente]);
+    const [clienteInfo] = await connection.execute(`
+      SELECT p.nombre_completo, p.telefono
+      FROM cliente c
+      JOIN persona p ON c.id_persona = p.id_persona
+      WHERE c.id_cliente = ?
+    `, [id_cliente]);
 
-// ✅ CORREGIDO: Asegurar que el nombre del cliente esté disponible
-const nombreCliente = clienteInfo[0]?.nombre_completo || 
-                      (await connection.execute(
-                        'SELECT nombre_completo FROM persona WHERE id_persona = (SELECT id_persona FROM cliente WHERE id_cliente = ?)',
-                        [id_cliente]
-                      ))[0]?.[0]?.nombre_completo || 
-                      'Cliente';
+    const nombreCliente = clienteInfo[0]?.nombre_completo || 
+                          (await connection.execute(
+                            'SELECT nombre_completo FROM persona WHERE id_persona = (SELECT id_persona FROM cliente WHERE id_cliente = ?)',
+                            [id_cliente]
+                          ))[0]?.[0]?.nombre_completo || 
+                          'Cliente';
 
-res.status(201).json({
-  success: true,
-  message: 'Recarga registrada correctamente',
-  recarga: {
-    id_venta,
-    id_cliente,
-    id_producto,
-    cantidad,
-    total,
-    id_metodo_pago,
-    fecha: fechaStr,
-    hora: horaStr,
-    estado: 'PAGADO',
-    cliente: nombreCliente, // ← Ahora siempre tendrá un valor
-    telefono: clienteInfo[0]?.telefono || ''
-  },
-  mensaje: 'Recarga completada exitosamente'
-});
+    res.status(201).json({
+      success: true,
+      message: 'Recarga registrada correctamente',
+      recarga: {
+        id_venta,
+        id_cliente,
+        id_producto,
+        cantidad,
+        total,
+        id_metodo_pago,
+        fecha: fechaStr,
+        hora: horaStr,
+        estado: estadoInicial === 7 ? 'PAGADO' : 'PENDIENTE',
+        cliente: nombreCliente,
+        telefono: clienteInfo[0]?.telefono || ''
+      },
+      mensaje: estadoInicial === 7 ? 'Recarga completada exitosamente' : 'Recarga registrada, esperando confirmación de pago'
+    });
 
   } catch (error) {
     await connection.rollback();
