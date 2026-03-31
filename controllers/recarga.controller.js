@@ -64,11 +64,11 @@ export const registrarRecarga = async (req, res) => {
       UPDATE producto SET stock = stock - ? WHERE id_producto = ?
     `, [cantidad, id_producto]);
 
-    // Registrar movimiento de stock
+    // ✅ CORREGIDO: Usar CONCAT en lugar de ||
     await connection.execute(`
       INSERT INTO movimiento_stock 
       (id_producto, tipo_movimiento, cantidad, descripcion, id_usuario)
-      VALUES (?, 'egreso', ?, 'Recarga de bidones - Venta #' || ?, ?)
+      VALUES (?, 'egreso', ?, CONCAT('Recarga de bidones - Venta #', ?), ?)
     `, [id_producto, cantidad, id_venta, id_usuario]);
 
     await connection.commit();
@@ -177,7 +177,8 @@ export const getRecargasHoy = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
-// ✅ AGREGAR ESTE MÉTODO
+
+// Cancelar recarga
 export const cancelarRecarga = async (req, res) => {
   const connection = await db.getConnection();
   try {
@@ -187,7 +188,6 @@ export const cancelarRecarga = async (req, res) => {
     const { motivo } = req.body;
     const id_usuario = req.user.id_usuario;
 
-    // Verificar que la venta existe y está en estado pendiente (4 = Listo para repartos)
     const [ventas] = await connection.execute(`
       SELECT id_venta, id_estado_venta, transaction_id_yape
       FROM venta 
@@ -201,13 +201,11 @@ export const cancelarRecarga = async (req, res) => {
 
     const venta = ventas[0];
 
-    // Si ya tiene transacción Yape asociada, no cancelar
     if (venta.transaction_id_yape) {
       await connection.rollback();
       return res.status(400).json({ error: 'No se puede cancelar una venta ya pagada con Yape' });
     }
 
-    // Actualizar estado a cancelado
     await connection.execute(`
       UPDATE venta 
       SET id_estado_venta = 8, 
