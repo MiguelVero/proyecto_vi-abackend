@@ -56,13 +56,15 @@ export const registrarRecarga = async (req, res) => {
     
     console.log(`💰 Método pago: ${id_metodo_pago === 2 ? 'YAPE' : 'EFECTIVO'} - Estado inicial: ${estadoInicial}`);
 
-    // Crear recarga
- const [result] = await connection.execute(`
-  INSERT INTO venta (
-    id_cliente, fecha, hora, total, id_metodo_pago, id_estado_venta,
-    id_vendedor, notas, tipo_comprobante_solicitado
-  ) VALUES (?, ?, ?, ?, ?, 4, ?, ?, 'SIN_COMPROBANTE')  // ← estado 4 para Yape
-`, [id_cliente, fechaStr, horaStr, total, id_metodo_pago, id_usuario, notas || 'Recarga de bidones - YAPE']);
+    // ✅ CORREGIDO: Eliminar el comentario dentro del string SQL
+    const [result] = await connection.execute(`
+      INSERT INTO venta (
+        id_cliente, fecha, hora, total, id_metodo_pago, id_estado_venta,
+        id_vendedor, notas, tipo_comprobante_solicitado
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'SIN_COMPROBANTE')
+    `, [id_cliente, fechaStr, horaStr, total, id_metodo_pago, estadoInicial, id_usuario, notas || 'Recarga de bidones']);
+
+    const id_venta = result.insertId;
 
     // Crear detalle de venta
     await connection.execute(`
