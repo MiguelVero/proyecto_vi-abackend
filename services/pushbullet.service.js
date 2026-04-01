@@ -55,55 +55,50 @@ class PushbulletService {
    * "Yape: Confirmación de Pago"
    * "Michel Fum* te envió un pago por S/ 1. El cód. de seguridad es: 266"
    */
-  parseYapeNotification(push) {
-    // Verificar si es una notificación de Yape
-    const isYape = push.title?.includes('Yape') || push.body?.includes('Yape');
-    if (!isYape) {
-      return null;
-    }
-
-    console.log('📱 Parseando notificación Yape:', {
-      title: push.title,
-      body: push.body,
-      created: push.created
-    });
-
-    // Extraer monto (ej: "S/ 1" o "S/ 4.50")
-    const montoMatch = push.body?.match(/S\/\s*(\d+(?:\.\d{1,2})?)/);
-    const monto = montoMatch ? parseFloat(montoMatch[1]) : null;
-
-    // Extraer código de seguridad de Yape (ej: "266")
-    const codigoSeguridadMatch = push.body?.match(/cód\.? de seguridad es:\s*(\d+)/i);
-    const codigoSeguridad = codigoSeguridadMatch ? codigoSeguridadMatch[1] : null;
-
-    // Buscar código Yape de tu sistema (formato YP-260330-XXXX)
-    const codigoYapeMatch = push.body?.match(/YP-\d{6}-\d{4}/);
-    const codigoVerificacion = codigoYapeMatch ? codigoYapeMatch[0] : codigoSeguridad;
-
-    // Extraer nombre del pagador (ej: "Michel Fum*")
-    const pagadorMatch = push.body?.match(/^([^*]+)\*/);
-    const pagador = pagadorMatch ? pagadorMatch[1].trim() : null;
-
-    // Verificar si tiene datos suficientes
-    if (!monto && !codigoVerificacion) {
-      console.log('⚠️ Notificación Yape sin datos reconocibles:', push.body);
-      return null;
-    }
-
-    return {
-      transaction_id: push.iden, // Usar el ID de Pushbullet como identificador único
-      amount: monto,
-      phone: null, // Pushbullet no proporciona el teléfono
-      message: push.body,
-      status: 'completed',
-      timestamp: push.created,
-      customer_name: pagador,
-      codigo_verificacion: codigoVerificacion,
-      codigo_seguridad: codigoSeguridad,
-      push_iden: push.iden,
-      push_created: push.created
-    };
+ // En parseYapeNotification, priorizar el código de seguridad de Yape
+parseYapeNotification(push) {
+  const isYape = push.title?.includes('Yape') || push.body?.includes('Yape');
+  if (!isYape) {
+    return null;
   }
+
+  console.log('📱 Parseando notificación Yape:', {
+    title: push.title,
+    body: push.body,
+    created: push.created
+  });
+
+  // Extraer monto
+  const montoMatch = push.body?.match(/S\/\s*(\d+(?:\.\d{1,2})?)/);
+  const monto = montoMatch ? parseFloat(montoMatch[1]) : null;
+
+  // ✅ Extraer código de seguridad de Yape (ej: "093")
+  const codigoSeguridadMatch = push.body?.match(/cód\.? de seguridad es:\s*(\d+)/i);
+  const codigoSeguridad = codigoSeguridadMatch ? codigoSeguridadMatch[1] : null;
+
+  // Extraer nombre del pagador
+  const pagadorMatch = push.body?.match(/^([^*]+)\*/);
+  const pagador = pagadorMatch ? pagadorMatch[1].trim() : null;
+
+  if (!monto) {
+    console.log('⚠️ Notificación Yape sin monto:', push.body);
+    return null;
+  }
+
+  console.log(`💰 Código de seguridad detectado: ${codigoSeguridad}`);
+
+  return {
+    transaction_id: push.iden,
+    amount: monto,
+    phone: null,
+    message: push.body,
+    status: 'completed',
+    timestamp: push.created,
+    customer_name: pagador,
+    codigo_verificacion: codigoSeguridad, // ← Usar código de seguridad como identificador
+    push_iden: push.iden
+  };
+}
 
   /**
    * Verificar si una notificación ya fue procesada

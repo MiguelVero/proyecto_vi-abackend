@@ -6,12 +6,10 @@ import crypto from 'crypto';
 // GENERAR CÓDIGO ÚNICO DE VERIFICACIÓN
 // ============================================
 export const generarCodigoYape = () => {
-  const fecha = new Date();
-  const dia = fecha.getDate().toString().padStart(2, '0');
-  const mes = (fecha.getMonth() + 1).toString().padStart(2, '0');
-  const anio = fecha.getFullYear().toString().slice(-2);
-  const random = Math.floor(Math.random() * 9999).toString().padStart(4, '0');
-  return `YP-${anio}${mes}${dia}-${random}`;
+  // Generar código de 3-4 dígitos que coincida con el formato de Yape
+  // Yape genera códigos de 3 dígitos generalmente
+  const random = Math.floor(Math.random() * 900 + 100).toString(); // 100-999
+  return random;
 };
 
 // ============================================
@@ -119,25 +117,20 @@ export const webhookYape = async (req, res) => {
     // ============================================
     // 4. EXTRAER CÓDIGO DEL MENSAJE
     // ============================================
-    let codigoVerificacion = codigo_verificacion;
-    
-    if (!codigoVerificacion && message) {
-      // Buscar código con formato YP-YYMMDD-XXXX
-      const codigoMatch = message.match(/YP-\d{6}-\d{4}/);
-      if (codigoMatch) {
-        codigoVerificacion = codigoMatch[0];
-      } else {
-        // Buscar código de seguridad simple (ej: "266")
-        const simpleMatch = message.match(/\b(\d{3,4})\b/);
-        if (simpleMatch) {
-          codigoVerificacion = simpleMatch[1];
-        }
-      }
-    }
-    
+// En la sección 4 (extraer código) - PRIORIDAD: código de seguridad de Yape
+let codigoVerificacion = codigo_verificacion;
+
+if (!codigoVerificacion && message) {
+  // Buscar código de seguridad de Yape (3-4 dígitos)
+  const seguridadMatch = message.match(/cód\.? de seguridad es:\s*(\d{3,4})/i);
+  if (seguridadMatch) {
+    codigoVerificacion = seguridadMatch[1];
+    console.log(`🔐 Código de seguridad Yape encontrado: ${codigoVerificacion}`);
+  }
+}
+
 if (!codigoVerificacion) {
-  console.log('⚠️ No se encontró código de verificación en el mensaje');
-  // ✅ CORREGIDO: Usar NOW() en lugar de JavaScript Date
+  console.log('⚠️ No se encontró código de seguridad en el mensaje');
   await db.execute(`
     INSERT INTO transacciones_yape 
     (transaction_id, monto, telefono_pagador, mensaje, estado, fecha_transaccion, push_id)
@@ -151,42 +144,46 @@ if (!codigoVerificacion) {
   });
 }
     
-    console.log(`🔐 Código encontrado: ${codigoVerificacion}`);
-    
     // ============================================
     // 5. BUSCAR VENTA CON ESE CÓDIGO
     // ============================================
-    let query = `
-      SELECT id_venta, id_cliente, total, codigo_yape, transaction_id_yape
-      FROM venta 
-      WHERE (codigo_yape = ? OR (notas LIKE ?))
-        AND id_estado_venta = 4  -- Listo para repartos (recarga pendiente)
-        AND transaction_id_yape IS NULL
-      ORDER BY fecha_creacion DESC
-      LIMIT 1
-    `;
-    
-    const [ventas] = await db.execute(query, [
-      codigoVerificacion, 
-      `%${codigoVerificacion}%`
-    ]);
-    
-    if (ventas.length === 0) {
-  console.log('❌ Código no válido o ya utilizado');
-  // ✅ CORREGIDO: Usar NOW()
+ let query = `
+  SELECT id_venta, id_cliente, total, codigo_yape, transaction_id_yape
+  FROM venta 
+  WHERE (codigo_yape = ? OR notas LIKE ? OR codigo_yape LIKE ?)
+    AND id_estado_venta = 4
+    AND transaction_id_yape IS NULL
+  ORDER BY fecha_creacion DESC
+  LIMIT 1
+`;
+
+// Buscar tanto por código personalizado como por coincidencia parcial del código de seguridad
+const [ventas] = await db.execute(`
+  SELECT id_venta, id_cliente, total, codigo_yape, transaction_id_yape
+  FROM venta 
+  WHERE id_estado_venta = 4  -- Listo para repartos (recarga pendiente)
+    AND id_metodo_pago = 2   -- Yape
+    AND total = ?            -- Coincidir monto
+    AND transaction_id_yape IS NULL
+  ORDER BY fecha_creacion DESC
+  LIMIT 1
+`, [amount]);  // ← Usar el monto para buscar la venta
+
+if (ventas.length === 0) {
+  console.log('❌ No se encontró venta pendiente para este monto');
   await db.execute(`
     INSERT INTO transacciones_yape 
     (transaction_id, monto, telefono_pagador, codigo_verificacion, mensaje, estado, fecha_transaccion, push_id)
-    VALUES (?, ?, ?, ?, ?, 'CODIGO_INVALIDO', NOW(), ?)
+    VALUES (?, ?, ?, ?, ?, 'VENTA_NO_ENCONTRADA', NOW(), ?)
   `, [finalTransactionId, amount, phone, codigoVerificacion, message, push_iden]);
   
   return res.status(404).json({ 
-    error: 'Código no válido o ya utilizado',
-    code: 'INVALID_CODE'
+    error: 'No se encontró venta pendiente para este monto',
+    code: 'NO_PENDING_SALE'
   });
 }
-    
-    const venta = ventas[0];
+
+const venta = ventas[0];
     
     // ============================================
     // 6. VALIDAR MONTO
