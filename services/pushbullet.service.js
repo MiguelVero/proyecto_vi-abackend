@@ -1,114 +1,171 @@
 // backend_dsi6/src/services/pushbullet.service.js
-import fetch from 'node-fetch';
+import WebSocket from 'ws';
 import db from '../config/db.js';
 
 class PushbulletService {
   constructor() {
     this.accessToken = null;
-    this.lastChecked = null;
+    this.ws = null;
     this.isRunning = false;
-    this.interval = null;
+    this.reconnectAttempts = 0;
     this.lastProcessedId = null;
   }
 
-  /**
-   * Inicializar el servicio con el token de acceso
-   */
   init(token) {
     this.accessToken = token;
     console.log('🔧 PushbulletService inicializado');
   }
 
   /**
-   * Obtener las notificaciones push recientes
+   * Conectar al WebSocket de Pushbullet para recibir notificaciones en tiempo real
    */
-  async getRecentPushes(limit = 10) {
+  connectWebSocket() {
     if (!this.accessToken) {
-      throw new Error('Pushbullet access token no configurado');
+      console.error('❌ No se puede conectar: token no configurado');
+      return;
     }
 
-    const url = new URL('https://api.pushbullet.com/v2/pushes');
-    url.searchParams.append('active', 'true');
-    url.searchParams.append('limit', limit.toString());
-    // Ordenar por más reciente primero
-    url.searchParams.append('modified_after', '0');
-
-    const response = await fetch(url.toString(), {
-      headers: {
-        'Access-Token': this.accessToken,
-        'Content-Type': 'application/json'
+    const wsUrl = `wss://stream.pushbullet.com/websocket/${this.accessToken}`;
+    console.log(`🔌 Conectando a Pushbullet WebSocket: ${wsUrl.substring(0, 50)}...`);
+    
+    this.ws = new WebSocket(wsUrl);
+    
+    this.ws.on('open', () => {
+      console.log('✅ Conectado a Pushbullet WebSocket');
+      this.reconnectAttempts = 0;
+      this.isRunning = true;
+    });
+    
+    this.ws.on('message', async (data) => {
+      try {
+        const message = JSON.parse(data);
+        console.log('📨 Mensaje WebSocket recibido:', message.type);
+        
+        // Cuando hay una nueva notificación push
+        if (message.type === 'tickle' && message.subtype === 'push') {
+          console.log('📱 Nueva notificación detectada, obteniendo detalles...');
+          await this.fetchAndProcessLatestPush();
+        }
+        
+        // También puede llegar directamente el push
+        if (message.type === 'push') {
+          console.log('📱 Push directo recibido');
+          await this.processYapeNotification(message.push);
+        }
+        
+      } catch (error) {
+        console.error('❌ Error procesando mensaje WebSocket:', error.message);
       }
     });
     
-    if (!response.ok) {
-      console.error(`Error fetching pushes: ${response.status}`);
-      return [];
-    }
+    this.ws.on('close', () => {
+      console.log('🔌 WebSocket cerrado, reconectando...');
+      this.isRunning = false;
+      this.reconnect();
+    });
     
-    const data = await response.json();
-    return data.pushes || [];
+    this.ws.on('error', (err) => {
+      console.error('❌ WebSocket error:', err.message);
+    });
   }
-
+  
+  /**
+   * Reintentar conexión con backoff exponencial
+   */
+  reconnect() {
+    const delay = Math.min(30000, Math.pow(2, this.reconnectAttempts) * 1000);
+    console.log(`🔄 Reintentando conexión en ${delay/1000} segundos...`);
+    
+    setTimeout(() => {
+      this.reconnectAttempts++;
+      this.connectWebSocket();
+    }, delay);
+  }
+  
+  /**
+   * Obtener la notificación más reciente y procesarla
+   */
+  async fetchAndProcessLatestPush() {
+    try {
+      // Obtener solo la notificación más reciente
+      const response = await fetch('https://api.pushbullet.com/v2/pushes?limit=1&active=true', {
+        headers: { 'Access-Token': this.accessToken }
+      });
+      
+      if (!response.ok) {
+        console.error(`Error fetching latest push: ${response.status}`);
+        return;
+      }
+      
+      const data = await response.json();
+      const pushes = data.pushes || [];
+      
+      if (pushes.length === 0) return;
+      
+      const latestPush = pushes[0];
+      
+      // Verificar si ya procesamos esta
+      if (this.lastProcessedId === latestPush.iden) {
+        return;
+      }
+      
+      // Si es notificación Yape, procesarla
+      if (latestPush.title?.includes('Yape') || latestPush.body?.includes('Yape')) {
+        console.log('💛 Notificación Yape detectada vía WebSocket!');
+        await this.processYapeNotification(latestPush);
+        this.lastProcessedId = latestPush.iden;
+      }
+      
+    } catch (error) {
+      console.error('❌ Error obteniendo notificación reciente:', error.message);
+    }
+  }
+  
   /**
    * Extraer información de una notificación Yape
-   * Formato típico de Yape:
-   * "Yape: Confirmación de Pago"
-   * "Michel Fum* te envió un pago por S/ 1. El cód. de seguridad es: 266"
    */
- // En parseYapeNotification, priorizar el código de seguridad de Yape
-parseYapeNotification(push) {
-  const isYape = push.title?.includes('Yape') || push.body?.includes('Yape');
-  if (!isYape) {
-    return null;
-  }
+  parseYapeNotification(push) {
+    const isYape = push.title?.includes('Yape') || push.body?.includes('Yape');
+    if (!isYape) {
+      return null;
+    }
 
-  console.log('📱 Parseando notificación Yape:', {
-    title: push.title,
-    body: push.body,
-    created: push.created
-  });
+    console.log('📱 Parseando notificación Yape:', {
+      title: push.title,
+      body: push.body?.substring(0, 100),
+      created: push.created
+    });
 
-  // Extraer monto
-  const montoMatch = push.body?.match(/S\/\s*(\d+(?:\.\d{1,2})?)/);
-  const monto = montoMatch ? parseFloat(montoMatch[1]) : null;
+    // Extraer monto
+    const montoMatch = push.body?.match(/S\/\s*(\d+(?:\.\d{1,2})?)/);
+    const monto = montoMatch ? parseFloat(montoMatch[1]) : null;
 
-  // ✅ Extraer código de seguridad de Yape (ej: "093")
-  const codigoSeguridadMatch = push.body?.match(/cód\.? de seguridad es:\s*(\d+)/i);
-  const codigoSeguridad = codigoSeguridadMatch ? codigoSeguridadMatch[1] : null;
+    // Extraer código de seguridad de Yape
+    const codigoSeguridadMatch = push.body?.match(/cód\.? de seguridad es:\s*(\d+)/i);
+    const codigoSeguridad = codigoSeguridadMatch ? codigoSeguridadMatch[1] : null;
 
-  // Extraer nombre del pagador
-  const pagadorMatch = push.body?.match(/^([^*]+)\*/);
-  const pagador = pagadorMatch ? pagadorMatch[1].trim() : null;
+    // Extraer nombre del pagador
+    const pagadorMatch = push.body?.match(/^([^*]+)\*/);
+    const pagador = pagadorMatch ? pagadorMatch[1].trim() : null;
 
-  if (!monto) {
-    console.log('⚠️ Notificación Yape sin monto:', push.body);
-    return null;
-  }
+    if (!monto) {
+      console.log('⚠️ Notificación Yape sin monto:', push.body);
+      return null;
+    }
 
-  console.log(`💰 Código de seguridad detectado: ${codigoSeguridad}`);
+    console.log(`💰 Código de seguridad detectado: ${codigoSeguridad}`);
 
-  return {
-    transaction_id: push.iden,
-    amount: monto,
-    phone: null,
-    message: push.body,
-    status: 'completed',
-    timestamp: push.created,
-    customer_name: pagador,
-    codigo_verificacion: codigoSeguridad, // ← Usar código de seguridad como identificador
-    push_iden: push.iden
-  };
-}
-
-  /**
-   * Verificar si una notificación ya fue procesada
-   */
-  async isAlreadyProcessed(pushId) {
-    const [rows] = await db.execute(
-      'SELECT id_transaccion FROM transacciones_yape WHERE transaction_id = ? OR push_id = ?',
-      [pushId, pushId]
-    );
-    return rows.length > 0;
+    return {
+      transaction_id: push.iden,
+      amount: monto,
+      phone: null,
+      message: push.body,
+      status: 'completed',
+      timestamp: push.created,
+      customer_name: pagador,
+      codigo_verificacion: codigoSeguridad,
+      push_iden: push.iden
+    };
   }
 
   /**
@@ -116,13 +173,17 @@ parseYapeNotification(push) {
    */
   async processYapeNotification(push) {
     const parsed = this.parseYapeNotification(push);
-    if (!parsed || (!parsed.amount && !parsed.codigo_verificacion)) {
+    if (!parsed || !parsed.amount) {
       return null;
     }
     
     // Verificar duplicados
-    const alreadyProcessed = await this.isAlreadyProcessed(parsed.transaction_id);
-    if (alreadyProcessed) {
+    const [rows] = await db.execute(
+      'SELECT id_transaccion FROM transacciones_yape WHERE transaction_id = ?',
+      [parsed.transaction_id]
+    );
+    
+    if (rows.length > 0) {
       console.log('⚠️ Notificación ya procesada:', parsed.transaction_id);
       return null;
     }
@@ -133,7 +194,7 @@ parseYapeNotification(push) {
       pagador: parsed.customer_name
     });
     
-    // Guardar registro inicial en la base de datos
+    // Guardar registro inicial
     await db.execute(`
       INSERT INTO transacciones_yape 
       (transaction_id, monto, telefono_pagador, codigo_verificacion, mensaje, estado, fecha_transaccion, push_id)
@@ -148,12 +209,11 @@ parseYapeNotification(push) {
       parsed.transaction_id
     ]);
     
-    // Obtener la URL base del backend
+    // Enviar al webhook interno
     const backendUrl = process.env.BACKEND_URL || 'https://proyectovi-abackend-production.up.railway.app';
     const webhookUrl = `${backendUrl}/api/yape/webhook`;
     
     try {
-      // Enviar al webhook interno
       const response = await fetch(webhookUrl, {
         method: 'POST',
         headers: { 
@@ -166,7 +226,6 @@ parseYapeNotification(push) {
       const result = await response.json();
       console.log('✅ Webhook response:', result);
       
-      // Actualizar estado según respuesta
       const estado = result.success ? 'CONFIRMADO' : (result.error ? 'ERROR_WEBHOOK' : 'PROCESADO');
       await db.execute(`
         UPDATE transacciones_yape 
@@ -186,77 +245,34 @@ parseYapeNotification(push) {
       return null;
     }
   }
-
+  
   /**
-   * Ejecutar polling cada X segundos
+   * Iniciar el servicio (WebSocket)
    */
-  async startPolling(intervalSeconds = 10) {
+  start() {
     if (this.isRunning) {
-      console.log('⚠️ Polling ya está ejecutándose');
+      console.log('⚠️ Servicio ya está ejecutándose');
       return;
     }
     
     if (!this.accessToken) {
-      console.error('❌ No se puede iniciar polling: token no configurado');
+      console.error('❌ No se puede iniciar: token no configurado');
       return;
     }
     
-    this.isRunning = true;
-    console.log(`🚀 Iniciando polling de Pushbullet cada ${intervalSeconds} segundos`);
-    
-    const poll = async () => {
-      try {
-        const pushes = await this.getRecentPushes(15);
-        
-        if (pushes.length === 0) {
-          return;
-        }
-        
-        // Procesar solo las nuevas (más recientes primero)
-        let newPushesFound = 0;
-        
-        for (const push of pushes) {
-          // Si ya procesamos este ID, detener (los más recientes están al inicio)
-          if (this.lastProcessedId === push.iden) {
-            break;
-          }
-          
-          // Si es una notificación Yape
-          if (push.title?.includes('Yape') || push.body?.includes('Yape')) {
-            await this.processYapeNotification(push);
-            newPushesFound++;
-          }
-        }
-        
-        // Actualizar último procesado (el más reciente)
-        if (pushes.length > 0) {
-          this.lastProcessedId = pushes[0].iden;
-        }
-        
-        if (newPushesFound > 0) {
-          console.log(`📊 Procesadas ${newPushesFound} nuevas notificaciones Yape`);
-        }
-        
-      } catch (error) {
-        console.error('❌ Error en polling Pushbullet:', error.message);
-      }
-    };
-    
-    // Ejecutar inmediatamente y luego cada intervalo
-    await poll();
-    this.interval = setInterval(poll, intervalSeconds * 1000);
+    this.connectWebSocket();
   }
   
   /**
-   * Detener el polling
+   * Detener el servicio
    */
-  stopPolling() {
-    if (this.interval) {
-      clearInterval(this.interval);
-      this.interval = null;
-      this.isRunning = false;
-      console.log('🛑 Polling de Pushbullet detenido');
+  stop() {
+    if (this.ws) {
+      this.ws.close();
+      this.ws = null;
     }
+    this.isRunning = false;
+    console.log('🛑 Servicio Pushbullet detenido');
   }
   
   /**
@@ -267,7 +283,7 @@ parseYapeNotification(push) {
       isRunning: this.isRunning,
       hasToken: !!this.accessToken,
       lastProcessedId: this.lastProcessedId,
-      lastChecked: this.lastChecked
+      connected: this.ws?.readyState === WebSocket.OPEN
     };
   }
 }

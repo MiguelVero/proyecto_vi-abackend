@@ -191,23 +191,23 @@ app.listen(PORT, async () => {
     const [rows] = await db.query("SELECT 1+1 AS result");
     console.log("✅ Conexión a DB OK");
     
-    // ============================================
-    // INICIAR PUSHBULLET POLLING (SOLO EN PRODUCCIÓN)
-    // ============================================
-    const pushbulletToken = process.env.PUSHBULLET_ACCESS_TOKEN;
-    
-    if (pushbulletToken) {
-      console.log('🔧 Configurando Pushbullet Service...');
-      pushbulletService.init(pushbulletToken);
-      
-      // Iniciar polling después de 5 segundos (dar tiempo a que todo cargue)
-      setTimeout(() => {
-        pushbulletService.startPolling(10); // cada 10 segundos
-      }, 5000);
-    } else {
-      console.log('⚠️ PUSHBULLET_ACCESS_TOKEN no configurado. El servicio de detección automática no se iniciará.');
-      console.log('   Para activarlo, agrega la variable en Railway: PUSHBULLET_ACCESS_TOKEN');
-    }
+  // En app.js, reemplazar la parte de inicio de Pushbullet
+
+// ============================================
+// INICIAR PUSHBULLET WEBSOCKET
+// ============================================
+const pushbulletToken = process.env.PUSHBULLET_ACCESS_TOKEN;
+
+if (pushbulletToken) {
+  console.log('🔧 Configurando Pushbullet Service...');
+  pushbulletService.init(pushbulletToken);
+  
+  setTimeout(() => {
+    pushbulletService.start(); // ← Cambiar a start() en lugar de startPolling
+  }, 5000);
+} else {
+  console.log('⚠️ PUSHBULLET_ACCESS_TOKEN no configurado');
+}
     
   } catch (err) {
     console.error("❌ Error conectando a la DB:", err.message);
