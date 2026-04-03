@@ -140,14 +140,21 @@ parseYapeNotification(push) {
     body = push.body || '';
   }
   
-  const isYape = title.includes('Yape') || body.includes('Yape');
-  console.log('🔍 isYape:', isYape);
+  // ✅ CORREGIDO: Detectar por contenido relevante, no solo por la palabra "Yape"
+  const isYape = title.includes('Yape') || 
+                 body.includes('Yape') || 
+                 (body.includes('te envió un pago por S/') && body.includes('cód. de seguridad es:'));
+  
+  console.log(`🔍 isYape: ${isYape}`);
+  console.log(`   - title.includes('Yape'): ${title.includes('Yape')}`);
+  console.log(`   - body.includes('Yape'): ${body.includes('Yape')}`);
+  console.log(`   - body contiene patrón pago: ${body.includes('te envió un pago por S/')}`);
   
   if (!isYape) {
     return null;
   }
 
-  // Extraer monto - MEJORAR LA EXPRESIÓN REGULAR
+  // Extraer monto
   const montoMatch = body.match(/S\/\s*(\d+(?:\.\d{1,2})?)/);
   console.log('🔍 montoMatch:', montoMatch);
   const monto = montoMatch ? parseFloat(montoMatch[1]) : null;
