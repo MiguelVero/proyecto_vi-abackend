@@ -115,73 +115,89 @@ class PushbulletService {
     }
   }
   
-  parseYapeNotification(push) {
-    if (!push) {
-      console.log('⚠️ Push vacío');
-      return null;
-    }
-
-    let title = '';
-    let body = '';
-    
-    if (push.type === 'mirror') {
-      title = push.title || '';
-      body = push.body || '';
-    } else {
-      title = push.title || '';
-      body = push.body || '';
-    }
-    
-    const isYape = title.includes('Yape') || body.includes('Yape');
-    if (!isYape) {
-      return null;
-    }
-
-    console.log('📱 Parseando notificación Yape:', {
-      title: title,
-      body: body.substring(0, 100),
-      type: push.type
-    });
-
-    const montoMatch = body.match(/S\/\s*(\d+(?:\.\d{1,2})?)/);
-    const monto = montoMatch ? parseFloat(montoMatch[1]) : null;
-
-    const codigoSeguridadMatch = body.match(/cód\.? de seguridad es:\s*(\d+)/i);
-    const codigoSeguridad = codigoSeguridadMatch ? codigoSeguridadMatch[1] : null;
-
-    const pagadorMatch = body.match(/^([^*]+)\*/);
-    const pagador = pagadorMatch ? pagadorMatch[1].trim() : null;
-
-    if (!monto) {
-      console.log('⚠️ Notificación Yape sin monto reconocible:', body);
-      return null;
-    }
-
-    console.log(`💰 Yape detectado - Monto: S/ ${monto}, Código seguridad: ${codigoSeguridad}, Pagador: ${pagador}`);
-
-    return {
-      transaction_id: push.iden || `pb-${Date.now()}`,
-      amount: monto,
-      phone: null,
-      message: body,
-      status: 'completed',
-      timestamp: push.created || Date.now() / 1000,
-      customer_name: pagador,
-      codigo_verificacion: codigoSeguridad,
-      push_iden: push.iden,
-      push_type: push.type
-    };
+// En parseYapeNotification, agrega logs detallados:
+parseYapeNotification(push) {
+  console.log('🔍 parseYapeNotification - Inicio');
+  console.log('🔍 push.type:', push?.type);
+  console.log('🔍 push.title:', push?.title);
+  console.log('🔍 push.body:', push?.body?.substring(0, 100));
+  
+  if (!push) {
+    console.log('⚠️ Push vacío');
+    return null;
   }
 
-  async processYapeNotification(push) {
-    console.log('🔄 Procesando notificación push');
-    
-    const parsed = this.parseYapeNotification(push);
-    if (!parsed || !parsed.amount) {
-      console.log('⚠️ No se pudo parsear la notificación o no es Yape');
-      return null;
-    }
-    
+  let title = '';
+  let body = '';
+  
+  if (push.type === 'mirror') {
+    title = push.title || '';
+    body = push.body || '';
+    console.log('📱 Notificación mirror - Título:', title);
+    console.log('📱 Notificación mirror - Body:', body);
+  } else {
+    title = push.title || '';
+    body = push.body || '';
+  }
+  
+  const isYape = title.includes('Yape') || body.includes('Yape');
+  console.log('🔍 isYape:', isYape);
+  
+  if (!isYape) {
+    return null;
+  }
+
+  // Extraer monto - MEJORAR LA EXPRESIÓN REGULAR
+  const montoMatch = body.match(/S\/\s*(\d+(?:\.\d{1,2})?)/);
+  console.log('🔍 montoMatch:', montoMatch);
+  const monto = montoMatch ? parseFloat(montoMatch[1]) : null;
+
+  // Extraer código de seguridad
+  const codigoSeguridadMatch = body.match(/cód\.? de seguridad es:\s*(\d+)/i);
+  console.log('🔍 codigoSeguridadMatch:', codigoSeguridadMatch);
+  const codigoSeguridad = codigoSeguridadMatch ? codigoSeguridadMatch[1] : null;
+
+  // Extraer nombre del pagador
+  const pagadorMatch = body.match(/^([^*]+)\*/);
+  const pagador = pagadorMatch ? pagadorMatch[1].trim() : null;
+
+  console.log(`💰 Resultado - Monto: ${monto}, Código: ${codigoSeguridad}, Pagador: ${pagador}`);
+
+  if (!monto) {
+    console.log('⚠️ No se pudo extraer el monto del body:', body);
+    return null;
+  }
+
+  return {
+    transaction_id: push.iden || `pb-${Date.now()}`,
+    amount: monto,
+    phone: null,
+    message: body,
+    status: 'completed',
+    timestamp: push.created || Date.now() / 1000,
+    customer_name: pagador,
+    codigo_verificacion: codigoSeguridad,
+    push_iden: push.iden,
+    push_type: push.type
+  };
+}
+
+async processYapeNotification(push) {
+  console.log('🔄 Procesando notificación push');
+  console.log('🔍 Contenido completo del push:', JSON.stringify(push).substring(0, 500));
+  
+  const parsed = this.parseYapeNotification(push);
+  
+  console.log('🔍 Resultado del parseo:', parsed ? 'Éxito' : 'Fallo');
+  if (parsed) {
+    console.log('   - amount:', parsed.amount);
+    console.log('   - codigo:', parsed.codigo_verificacion);
+  }
+  
+  if (!parsed || !parsed.amount) {
+    console.log('⚠️ No se pudo parsear la notificación o no es Yape');
+    return null;
+  }
     console.log('💰 Pago Yape detectado:', {
       monto: parsed.amount,
       codigo: parsed.codigo_verificacion,

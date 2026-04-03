@@ -52,9 +52,9 @@ export const registrarRecarga = async (req, res) => {
     // ✅ DETERMINAR ESTADO INICIAL SEGÚN MÉTODO DE PAGO
     // Yape: estado 4 (Listo para repartos, esperando confirmación)
     // Efectivo: estado 7 (Pagado directamente)
-    const estadoInicial = id_metodo_pago === 2 ? 4 : 7;
+   const estadoInicial = id_metodo_pago === 2 ? 1 : 7;
     
-    console.log(`💰 Método pago: ${id_metodo_pago === 2 ? 'YAPE' : 'EFECTIVO'} - Estado inicial: ${estadoInicial}`);
+    console.log(`💰 Método pago: ${id_metodo_pago === 2 ? 'YAPE' : 'EFECTIVO'} - Estado inicial: ${estadoInicial} (${id_metodo_pago === 2 ? 'Pendiente' : 'Pagado'})`);
 
     // ✅ CORREGIDO: Eliminar el comentario dentro del string SQL
     const [result] = await connection.execute(`

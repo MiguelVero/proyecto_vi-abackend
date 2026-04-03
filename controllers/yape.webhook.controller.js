@@ -161,9 +161,9 @@ if (!codigoVerificacion) {
 const [ventas] = await db.execute(`
   SELECT id_venta, id_cliente, total, codigo_yape, transaction_id_yape
   FROM venta 
-  WHERE id_estado_venta = 4  -- Listo para repartos (recarga pendiente)
-    AND id_metodo_pago = 2   -- Yape
-    AND total = ?            -- Coincidir monto
+  WHERE id_estado_venta = 1  
+    AND id_metodo_pago = 2  
+    AND total = ?            
     AND transaction_id_yape IS NULL
   ORDER BY fecha_creacion DESC
   LIMIT 1
